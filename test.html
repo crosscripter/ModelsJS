@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>JSON As Model</title>
+</head>
+<body>
+<script src="http://code.jquery.com/jquery.min.js"></script>
+<script>
+
+var models = { };
+
+String.prototype.toHTML= function(id, owner) {
+	return "<input type='text' id='" + owner + '_' + id + "' value='" + this + "'"
+		+ " onchange='models.update(\"" + owner + "\", \"" + id + "\", this.value)'>";
+};
+
+Number.prototype.toHTML = function (id, owner) {
+	return "<input type='numeric' id='" + owner + '_' + id + "' value='" + this + "'"
+		+ " onchange='models.update(\"" + owner + "\", \"" + id + "\", this.value)'>";
+};
+
+Boolean.prototype.toHTML = function(id, owner) {
+	return "<input type='checkbox' id='" + owner + '_' + id + "' value='" + (this ? 1 : 0)
+			+ "' onchange='models.update(\"" + owner + "\", \"" + id + "\", this.checked)'>";
+};
+
+Array.prototype.toHTML = function(id, owner) {
+	var html = "<select id='" + owner + "_" + id + "'"
+		+ " onchange='models.update(\"" + owner + "\", \"" + id + "\", this.value)'>";
+
+	for (var i = 0; i < this.length; i++) {
+		html += "<option value='" + this[i] + "'>" + this[i] + "</option>";
+	}
+
+	html += "</select>";
+	return html;
+};
+
+models.add = function(model_id, data) {
+	data._id = model_id;
+	data.events = {};
+	return models[model_id] = data;
+};
+
+models.on = function(owner, id, event, handler, error) {
+	var event = models[owner].events[event] = {};
+	event[id] = {handler: handler, error: error};
+	return event;
+};
+
+models.drop = function(owner) {
+	delete models[owner];
+}
+
+models.update = function(owner, id, value) {
+	var sel = "#" + owner + "_" + id;
+	var elem = $(sel);
+	var oldValue = models[owner][id];
+
+	// Clear old errors
+	$(".error").remove();
+
+	// Check for events.
+	var events = models[owner].events;
+
+	// Run events/validators.
+	if (events && events.change && events.change[id]) {
+		if (!events.change[id].handler(value)) {
+			return events.change[id].error(value);
+		}
+	}
+
+	// Set list items.
+	if (value instanceof Array) {
+		elem.children().remove();
+
+		for (var i = 0; i < value.length; i++) {
+			$("<option value='" + value[i] + "'>" 
+				+ value[i] + "</option>").appendTo(sel);
+		}
+
+		elem.val("");		
+	} else {
+		elem.val(value);
+	}
+
+	console.log(owner, id, value);
+	return models[owner][id] = value;
+};
+
+models.toHTML = function(id) {
+	var model = models[id];
+	
+	if (model.toHTML) {
+		return model.toHTML();
+	}
+
+	var html = "<form><ul style='list-style:none;'>";
+	var owner = model['_id'];
+
+	for (var prop in model) {
+		if (model.hasOwnProperty(prop) && prop.charAt(0) !== '_' 
+			&& ['events'].indexOf(prop) === -1) {
+
+			html += "<li><label for='" + owner + "_" + prop + "'>" + prop + "</label>" 
+				+ model[prop].toHTML(prop, owner) + "</li>";		
+		}
+	}
+
+	html += "</ul></form>";
+	return html;
+};
+
+models.render = function(id, sel) {
+	var model = models[id];
+	sel = sel || "body";
+	$(models.toHTML(id)).appendTo(sel);
+};
+
+
+
+var mike = models.add("mike", {
+	name: "Mike",
+	age: 29,
+	married: true,
+	cats: ["Yen Li", "Tundra"]
+});
+
+models.on("mike", "name", "change", function(name) {
+	console.log("Mike's name is now: " + name);
+	return /^[a-zA-Z]+$/.test(name);
+}, function(name) {
+	console.error("Bad name: " + name);
+});
+
+models.on("mike", "age", "change", function(age) {
+	return parseInt(age, 10) !== NaN
+		&& age >= 1 && age <= 120;
+}, function(age) { 
+	var error = "Age should be a number from 1-120: " + age + " is not a valid age.";
+	$("<p class='error' style='color:red'>" + error + "</p>").prependTo("form");
+});
+
+models.render("mike");
+
+setTimeout(function() {
+	models.update("mike", "name", "michael");
+}, 3000);
+
+</script>
+</body>
+</html>
